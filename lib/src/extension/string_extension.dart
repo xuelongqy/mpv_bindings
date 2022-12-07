@@ -8,6 +8,16 @@ extension StringExtension on String {
   }
 }
 
+extension StringListExtension on List<String> {
+  Pointer<Pointer<Char>> toNativeCharList({Allocator allocator = malloc}) {
+    final argsPointer = malloc.call<Pointer<Char>>(length);
+    for (int i = 0; i < length; i++) {
+      argsPointer[i] = this[i].toNativeChar();
+    }
+    return argsPointer;
+  }
+}
+
 extension PointerCharExtension on Pointer<Char> {
   String toDartString({int? length}) {
     return cast<Utf8>().toDartString(length: length);
