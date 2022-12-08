@@ -482,4 +482,279 @@ class MpvClient {
         mpv_format.MPV_FORMAT_NODE,
         MpvNode.toNode(data).cast<Void>()));
   }
+
+  /// Read the value of the given property.
+  ///
+  /// If the format doesn't match with the internal format of the property, access
+  /// usually will fail with MPV_ERROR_PROPERTY_FORMAT. In some cases, the data
+  /// is automatically converted and access succeeds. For example, MPV_FORMAT_INT64
+  /// is always converted to MPV_FORMAT_DOUBLE, and access using MPV_FORMAT_STRING
+  /// usually invokes a string formatter.
+  ///
+  /// @param [name] The property name.
+  /// @param[out] data Pointer to the variable holding the option value. On
+  ///                  success, the variable will be set to a copy of the option
+  ///                  value. For formats that require dynamic memory allocation,
+  ///                  you can free the value with mpv_free() (strings) or
+  ///                  mpv_free_node_contents() (MPV_FORMAT_NODE).
+  T? getProperty<T>(String name) {
+    final result = malloc.call<mpv_node>();
+    try {
+      _handleErrorCode(_bindings.mpv_get_property(handle, name.toNativeChar(),
+          mpv_format.MPV_FORMAT_NODE, result.cast<Void>()));
+      final data = MpvNode.toData<T>(result);
+      freeNodeContents(result);
+      return data;
+    } catch (_) {
+      rethrow;
+    } finally {
+      freeNodeContents(result);
+    }
+  }
+
+  /// Return the value of the property with the given name as string. This is
+  /// equivalent to mpv_get_property() with MPV_FORMAT_STRING.
+  ///
+  /// See MPV_FORMAT_STRING for character encoding issues.
+  ///
+  /// On error, NULL is returned. Use mpv_get_property() if you want fine-grained
+  /// error reporting.
+  ///
+  /// @param name The property name.
+  /// @return Property value, or NULL if the property can't be retrieved. Free
+  ///         the string with mpv_free().
+  String getPropertyString(String name) {
+    final pointer =
+        _bindings.mpv_get_property_string(handle, name.toNativeChar());
+    final data = pointer.toDartString();
+    free(pointer);
+    return data;
+  }
+
+  /// Return the property as "OSD" formatted string. This is the same as
+  /// mpv_get_property_string, but using MPV_FORMAT_OSD_STRING.
+  ///
+  /// @return Property value, or NULL if the property can't be retrieved. Free
+  ///         the string with mpv_free().
+  String getPropertyOSDString(String name) {
+    final pointer =
+        _bindings.mpv_get_property_osd_string(handle, name.toNativeChar());
+    final data = pointer.toDartString();
+    free(pointer);
+    return data;
+  }
+
+  /// Get a property asynchronously. You will receive the result of the operation
+  /// as well as the property data with the MPV_EVENT_GET_PROPERTY_REPLY event.
+  /// You should check the mpv_event.error field on the reply event.
+  ///
+  /// Safe to be called from mpv render API threads.
+  ///
+  /// @param reply_userdata see section about asynchronous calls
+  /// @param name The property name.
+  /// @param format see enum mpv_format.
+  void getPropertyAsync(int replyUserdata, String name, int format) {
+    _handleErrorCode(_bindings.mpv_get_property_async(
+        handle, replyUserdata, name.toNativeChar(), format));
+  }
+
+  /// Get a notification whenever the given property changes. You will receive
+  /// updates as MPV_EVENT_PROPERTY_CHANGE. Note that this is not very precise:
+  /// for some properties, it may not send updates even if the property changed.
+  /// This depends on the property, and it's a valid feature request to ask for
+  /// better update handling of a specific property. (For some properties, like
+  /// ``clock``, which shows the wall clock, this mechanism doesn't make too
+  /// much sense anyway.)
+  ///
+  /// Property changes are coalesced: the change events are returned only once the
+  /// event queue becomes empty (e.g. mpv_wait_event() would block or return
+  /// MPV_EVENT_NONE), and then only one event per changed property is returned.
+  ///
+  /// You always get an initial change notification. This is meant to initialize
+  /// the user's state to the current value of the property.
+  ///
+  /// Normally, change events are sent only if the property value changes according
+  /// to the requested format. mpv_event_property will contain the property value
+  /// as data member.
+  ///
+  /// Warning: if a property is unavailable or retrieving it caused an error,
+  ///          MPV_FORMAT_NONE will be set in mpv_event_property, even if the
+  ///          format parameter was set to a different value. In this case, the
+  ///          mpv_event_property.data field is invalid.
+  ///
+  /// If the property is observed with the format parameter set to MPV_FORMAT_NONE,
+  /// you get low-level notifications whether the property _may_ have changed, and
+  /// the data member in mpv_event_property will be unset. With this mode, you
+  /// will have to determine yourself whether the property really changed. On the
+  /// other hand, this mechanism can be faster and uses less resources.
+  ///
+  /// Observing a property that doesn't exist is allowed. (Although it may still
+  /// cause some sporadic change events.)
+  ///
+  /// Keep in mind that you will get change notifications even if you change a
+  /// property yourself. Try to avoid endless feedback loops, which could happen
+  /// if you react to the change notifications triggered by your own change.
+  ///
+  /// Only the mpv_handle on which this was called will receive the property
+  /// change events, or can unobserve them.
+  ///
+  /// Safe to be called from mpv render API threads.
+  ///
+  /// @param reply_userdata This will be used for the mpv_event.reply_userdata
+  ///                       field for the received MPV_EVENT_PROPERTY_CHANGE
+  ///                       events. (Also see section about asynchronous calls,
+  ///                       although this function is somewhat different from
+  ///                       actual asynchronous calls.)
+  ///                       If you have no use for this, pass 0.
+  ///                       Also see mpv_unobserve_property().
+  /// @param name The property name.
+  /// @param format see enum mpv_format. Can be MPV_FORMAT_NONE to omit values
+  ///               from the change events.
+  void getObserveAsync(int replyUserdata, String name, int format) {
+    _handleErrorCode(_bindings.mpv_observe_property(
+        handle, replyUserdata, name.toNativeChar(), format));
+  }
+
+  /// Undo mpv_observe_property(). This will remove all observed properties for
+  /// which the given number was passed as reply_userdata to mpv_observe_property.
+  ///
+  /// Safe to be called from mpv render API threads.
+  ///
+  /// @param registered_reply_userdata ID that was passed to mpv_observe_property
+  /// @return negative value is an error code, >=0 is number of removed properties
+  ///         on success (includes the case when 0 were removed)
+  int getUnobserveAsync(int replyUserdata) {
+    final code = _bindings.mpv_unobserve_property(handle, replyUserdata);
+    _handleErrorCode(code);
+    return code;
+  }
+
+  /// Return a string describing the event. For unknown events, NULL is returned.
+  ///
+  /// Note that all events actually returned by the API will also yield a non-NULL
+  /// string with this function.
+  ///
+  /// @param event event ID, see see enum mpv_event_id
+  /// @return A static string giving a short symbolic name of the event. It
+  ///         consists of lower-case alphanumeric characters and can include "-"
+  ///         characters. This string is suitable for use in e.g. scripting
+  ///         interfaces.
+  ///         The string is completely static, i.e. doesn't need to be deallocated,
+  ///         and is valid forever.
+  String eventName(int event) {
+    return _bindings.mpv_event_name(event).toDartString();
+  }
+
+  /// Convert the given src event to a mpv_node, and set///dst to the result.///dst
+  /// is set to a MPV_FORMAT_NODE_MAP, with fields for corresponding mpv_event and
+  /// mpv_event.data/mpv_event_* fields.
+  ///
+  /// The exact details are not completely documented out of laziness. A start
+  /// is located in the "Events" section of the manpage.
+  ///
+  //////dst may point to newly allocated memory, or pointers in mpv_event. You must
+  /// copy the entire mpv_node if you want to reference it after mpv_event becomes
+  /// invalid (such as making a new mpv_wait_event() call, or destroying the
+  /// mpv_handle from which it was returned). Call mpv_free_node_contents() to free
+  /// any memory allocations made by this API function.
+  ///
+  /// Safe to be called from mpv render API threads.
+  ///
+  /// @param dst Target. This is not read and fully overwritten. Must be released
+  ///            with mpv_free_node_contents(). Do not write to pointers returned
+  ///            by it. (On error, this may be left as an empty node.)
+  /// @param src The source event. Not modified (it's not const due to the author's
+  ///            prejudice of the C version of const).
+  T? eventToNode<T>(Pointer<mpv_event> src) {
+    final dst = malloc.call<mpv_node>();
+    try {
+      _handleErrorCode(_bindings.mpv_event_to_node(dst, src));
+      final data = MpvNode.toData<T>(dst);
+      return data;
+    } catch (_) {
+      rethrow;
+    } finally {
+      freeNodeContents(dst);
+    }
+  }
+
+  /// Enable or disable the given event.
+  ///
+  /// Some events are enabled by default. Some events can't be disabled.
+  ///
+  /// (Informational note: currently, all events are enabled by default, except
+  ///  MPV_EVENT_TICK.)
+  ///
+  /// Safe to be called from mpv render API threads.
+  ///
+  /// @param [event] See enum mpv_event_id.
+  /// @param [enable] 1 to enable receiving this event, 0 to disable it.
+  void requestEvent(int event, bool enable) {
+    _handleErrorCode(
+        _bindings.mpv_request_event(handle, event, enable ? 1 : 0));
+  }
+
+  /// Enable or disable receiving of log messages. These are the messages the
+  /// command line player prints to the terminal. This call sets the minimum
+  /// required log level for a message to be received with MPV_EVENT_LOG_MESSAGE.
+  ///
+  /// @param [minLevel] Minimal log level as string. Valid log levels:
+  ///                      no fatal error warn info v debug trace
+  ///                  The value "no" disables all messages. This is the default.
+  ///                  An exception is the value "terminal-default", which uses the
+  ///                  log level as set by the "--msg-level" option. This works
+  ///                  even if the terminal is disabled. (Since API version 1.19.)
+  ///                  Also see mpv_log_level.
+  void requestLogMessages(String minLevel) {
+    _handleErrorCode(
+        _bindings.mpv_request_log_messages(handle, minLevel.toNativeChar()));
+  }
+
+  /// Wait for the next event, or until the timeout expires, or if another thread
+  /// makes a call to mpv_wakeup(). Passing 0 as timeout will never wait, and
+  /// is suitable for polling.
+  ///
+  /// The internal event queue has a limited size (per client handle). If you
+  /// don't empty the event queue quickly enough with mpv_wait_event(), it will
+  /// overflow and silently discard further events. If this happens, making
+  /// asynchronous requests will fail as well (with MPV_ERROR_EVENT_QUEUE_FULL).
+  ///
+  /// Only one thread is allowed to call this on the same mpv_handle at a time.
+  /// The API won't complain if more than one thread calls this, but it will cause
+  /// race conditions in the client when accessing the shared mpv_event struct.
+  /// Note that most other API functions are not restricted by this, and no API
+  /// function internally calls mpv_wait_event(). Additionally, concurrent calls
+  /// to different mpv_handles are always safe.
+  ///
+  /// As long as the timeout is 0, this is safe to be called from mpv render API
+  /// threads.
+  ///
+  /// @param [timeout] Timeout in seconds, after which the function returns even if
+  ///                no event was received. A MPV_EVENT_NONE is returned on
+  ///                timeout. A value of 0 will disable waiting. Negative values
+  ///                will wait with an infinite timeout.
+  /// @return A struct containing the event ID and other data. The pointer (and
+  ///         fields in the struct) stay valid until the next mpv_wait_event()
+  ///         call, or until the mpv_handle is destroyed. You must not write to
+  ///         the struct, and all memory referenced by it will be automatically
+  ///         released by the API on the next mpv_wait_event() call, or when the
+  ///         context is destroyed. The return value is never NULL.
+  Pointer<mpv_event> waitEvent(double timeout) {
+    return _bindings.mpv_wait_event(handle, timeout);
+  }
+
+  /// Interrupt the current mpv_wait_event() call. This will wake up the thread
+  /// currently waiting in mpv_wait_event(). If no thread is waiting, the next
+  /// mpv_wait_event() call will return immediately (this is to avoid lost
+  /// wakeups).
+  ///
+  /// mpv_wait_event() will receive a MPV_EVENT_NONE if it's woken up due to
+  /// this call. But note that this dummy event might be skipped if there are
+  /// already other events queued. All what counts is that the waiting thread
+  /// is woken up at all.
+  ///
+  /// Safe to be called from mpv render API threads.
+  void wakeup() {
+    return _bindings.mpv_wakeup(handle);
+  }
 }
