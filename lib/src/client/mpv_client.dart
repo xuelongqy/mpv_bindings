@@ -2,6 +2,19 @@ part of mpv_bindings;
 
 /// Mpv client API.
 class MpvClient {
+  /// MpvClient Map.
+  /// Lookup for callback events.
+  static final Map<int, MpvClient> _mpvClientMap = {};
+
+  /// This callback is invoked from any mpv thread (but possibly also
+  /// recursively from a thread that is calling the mpv API).
+  static void _wakeup(Pointer<Void> key) {
+    final mpvClient = _mpvClientMap[key.cast<IntPtr>().value];
+    if (mpvClient != null) {
+      mpvClient._onEvents();
+    }
+  }
+
   /// Mpv bindings.
   final MpvBindings _bindings;
 
@@ -9,17 +22,36 @@ class MpvClient {
   /// handle.
   final Pointer<mpv_handle> handle;
 
+  late final Pointer<IntPtr> _key;
+
   /// Create mpv client.
   MpvClient({
     MpvBindings? bindings,
   })  : _bindings = bindings ?? MpvLib.bindings,
-        handle = (bindings ?? MpvLib.bindings).mpv_create();
+        handle = (bindings ?? MpvLib.bindings).mpv_create() {
+    _register();
+  }
 
   /// Create mpv client with handle.
   MpvClient.handle({
     MpvBindings? bindings,
     required this.handle,
-  }) : _bindings = bindings ?? MpvLib.bindings;
+  }) : _bindings = bindings ?? MpvLib.bindings {
+    _register();
+  }
+
+  /// Register mpv client.
+  void _register() {
+    _key = malloc.call<IntPtr>()..value = handle.address;
+    _mpvClientMap[_key.value] = this;
+    _setWakeupCallback();
+  }
+
+  /// Unregister mpv client.
+  void _unregister() {
+    _mpvClientMap.remove(_key.value);
+    malloc.free(_key);
+  }
 
   /// Handle mpv error code.
   void _handleErrorCode(int error) {
@@ -108,6 +140,7 @@ class MpvClient {
   /// have responded to the shutdown event, and the core is finally destroyed.
   void destroy() {
     _bindings.mpv_destroy(handle);
+    _unregister();
   }
 
   /// Similar to mpv_destroy(), but brings the player and all clients down
@@ -135,6 +168,7 @@ class MpvClient {
   ///  mpv_destroy(), without waiting for the actual shutdown.
   void terminateDestroy() {
     _bindings.mpv_terminate_destroy(handle);
+    _unregister();
   }
 
   /// Create a new client handle connected to the same player core as ctx. This
@@ -756,5 +790,128 @@ class MpvClient {
   /// Safe to be called from mpv render API threads.
   void wakeup() {
     return _bindings.mpv_wakeup(handle);
+  }
+
+  /// Set a custom function that should be called when there are new events. Use
+  /// this if blocking in mpv_wait_event() to wait for new events is not feasible.
+  ///
+  /// Keep in mind that the callback will be called from foreign threads. You
+  /// must not make any assumptions of the environment, and you must return as
+  /// soon as possible (i.e. no long blocking waits). Exiting the callback through
+  /// any other means than a normal return is forbidden (no throwing exceptions,
+  /// no longjmp() calls). You must not change any local thread state (such as
+  /// the C floating point environment).
+  ///
+  /// You are not allowed to call any client API functions inside of the callback.
+  /// In particular, you should not do any processing in the callback, but wake up
+  /// another thread that does all the work. The callback is meant strictly for
+  /// notification only, and is called from arbitrary core parts of the player,
+  /// that make no considerations for reentrant API use or allowing the callee to
+  /// spend a lot of time doing other things. Keep in mind that it's also possible
+  /// that the callback is called from a thread while a mpv API function is called
+  /// (i.e. it can be reentrant).
+  ///
+  /// In general, the client API expects you to call mpv_wait_event() to receive
+  /// notifications, and the wakeup callback is merely a helper utility to make
+  /// this easier in certain situations. Note that it's possible that there's
+  /// only one wakeup callback invocation for multiple events. You should call
+  /// mpv_wait_event() with no timeout until MPV_EVENT_NONE is reached, at which
+  /// point the event queue is empty.
+  ///
+  /// If you actually want to do processing in a callback, spawn a thread that
+  /// does nothing but call mpv_wait_event() in a loop and dispatches the result
+  /// to a callback.
+  ///
+  /// Only one wakeup callback can be set.
+  ///
+  /// @param cb function that should be called if a wakeup is required
+  /// @param d arbitrary userdata passed to cb
+  void _setWakeupCallback() {
+    _bindings.mpv_set_wakeup_callback(
+        handle, Pointer.fromFunction(_wakeup), _key.cast<Void>());
+  }
+
+  /// Block until all asynchronous requests are done. This affects functions like
+  /// mpv_command_async(), which return immediately and return their result as
+  /// events.
+  ///
+  /// This is a helper, and somewhat equivalent to calling mpv_wait_event() in a
+  /// loop until all known asynchronous requests have sent their reply as event,
+  /// except that the event queue is not emptied.
+  ///
+  /// In case you called mpv_suspend() before, this will also forcibly reset the
+  /// suspend counter of the given handle.
+  void waitAsyncRequests() {
+    _bindings.mpv_wait_async_requests(handle);
+  }
+
+  /// A hook is like a synchronous event that blocks the player. You register
+  /// a hook handler with this function. You will get an event, which you need
+  /// to handle, and once things are ready, you can let the player continue with
+  /// mpv_hook_continue().
+  ///
+  /// Currently, hooks can't be removed explicitly. But they will be implicitly
+  /// removed if the mpv_handle it was registered with is destroyed. This also
+  /// continues the hook if it was being handled by the destroyed mpv_handle (but
+  /// this should be avoided, as it might mess up order of hook execution).
+  ///
+  /// Hook handlers are ordered globally by priority and order of registration.
+  /// Handlers for the same hook with same priority are invoked in order of
+  /// registration (the handler registered first is run first). Handlers with
+  /// lower priority are run first (which seems backward).
+  ///
+  /// See the "Hooks" section in the manpage to see which hooks are currently
+  /// defined.
+  ///
+  /// Some hooks might be reentrant (so you get multiple MPV_EVENT_HOOK for the
+  /// same hook). If this can happen for a specific hook type, it will be
+  /// explicitly documented in the manpage.
+  ///
+  /// Only the mpv_handle on which this was called will receive the hook events,
+  /// or can "continue" them.
+  ///
+  /// @param [replyUserdata] This will be used for the mpv_event.reply_userdata
+  ///                       field for the received MPV_EVENT_HOOK events.
+  ///                       If you have no use for this, pass 0.
+  /// @param [name] The hook name. This should be one of the documented names. But
+  ///             if the name is unknown, the hook event will simply be never
+  ///             raised.
+  /// @param [priority] See remarks above. Use 0 as a neutral default.
+  void hookAdd(int replyUserdata, String name, int priority) {
+    _handleErrorCode(_bindings.mpv_hook_add(
+        handle, replyUserdata, name.toNativeChar(), priority));
+  }
+
+  /// Respond to a MPV_EVENT_HOOK event. You must call this after you have handled
+  /// the event. There is no way to "cancel" or "stop" the hook.
+  ///
+  /// Calling this will will typically unblock the player for whatever the hook
+  /// is responsible for (e.g. for the "on_load" hook it lets it continue
+  /// playback).
+  ///
+  /// It is explicitly undefined behavior to call this more than once for each
+  /// MPV_EVENT_HOOK, to pass an incorrect ID, or to call this on a mpv_handle
+  /// different from the one that registered the handler and received the event.
+  ///
+  /// @param [id] This must be the value of the mpv_event_hook.id field for the
+  ///           corresponding MPV_EVENT_HOOK.
+  void hookContinue(int id) {
+    _handleErrorCode(_bindings.mpv_hook_continue(handle, id));
+  }
+
+  /// when the events are received.
+  void _onEvents() {
+    while (_mpvClientMap.containsKey(_key.value)) {
+      final event = waitEvent(0);
+      if (event.ref.event_id == mpv_event_id.MPV_EVENT_NONE) {
+        break;
+      }
+      _handleEvent(event);
+    }
+  }
+
+  /// Handle mpv events.
+  void _handleEvent(Pointer<mpv_event> event) {
+    final eventId = event.ref.event_id;
   }
 }
