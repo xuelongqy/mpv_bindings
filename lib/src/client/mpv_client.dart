@@ -40,6 +40,28 @@ class MpvClient {
     _register();
   }
 
+  /// Event listeners.
+  final Map<int, List<MpvEventCallback>> _eventListeners = {};
+
+  /// Add event listener.
+  /// [eventId] See [mpv_event_id].
+  /// [listener] Event listener for eventId.
+  void addEventListener(int eventId, MpvEventCallback listener) {
+    if (!_eventListeners.containsKey(eventId)) {
+      _eventListeners[eventId] = [];
+    }
+    _eventListeners[eventId]!.add(listener);
+  }
+
+  /// Remove event listener.
+  /// [eventId] See [mpv_event_id].
+  /// [listener] Event listener for eventId.
+  void removeEventListener(int eventId, MpvEventCallback listener) {
+    if (_eventListeners.containsKey(eventId)) {
+      _eventListeners[eventId]!.remove(listener);
+    }
+  }
+
   /// Register mpv client.
   void _register() {
     _key = malloc.call<IntPtr>()..value = handle.address;
@@ -51,6 +73,7 @@ class MpvClient {
   void _unregister() {
     _mpvClientMap.remove(_key.value);
     malloc.free(_key);
+    _eventListeners.clear();
   }
 
   /// Handle mpv error code.
@@ -913,5 +936,10 @@ class MpvClient {
   /// Handle mpv events.
   void _handleEvent(Pointer<mpv_event> event) {
     final eventId = event.ref.event_id;
+    if (_eventListeners.containsKey(eventId)) {
+      for (final listener in _eventListeners[eventId]!) {
+        listener.call(event);
+      }
+    }
   }
 }

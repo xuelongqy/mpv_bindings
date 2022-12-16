@@ -2,7 +2,6 @@ part of mpv_bindings;
 
 /// Mpv library and bindings.
 class MpvLib {
-
   /// Mpv bindings.
   static MpvBindings? _bindings;
 
