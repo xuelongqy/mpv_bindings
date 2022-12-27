@@ -214,7 +214,9 @@ class MpvClient {
   ///             If NULL, an arbitrary name is automatically chosen.
   /// return a new handle, or NULL on error
   MpvClient createClient(String name) {
-    final ctx = _bindings.mpv_create_client(handle, name.toNativeChar());
+    final namePointer = name.toNativeChar();
+    final ctx = _bindings.mpv_create_client(handle, namePointer);
+    malloc.free(namePointer);
     return MpvClient.handle(handle: ctx, bindings: _bindings);
   }
 
@@ -229,7 +231,9 @@ class MpvClient {
   /// mpv_terminate_destroy() _and_ mpv_destroy() for the last non-weak
   /// mpv_handle will block until all weak mpv_handles are destroyed.
   MpvClient createWeakClient(String name) {
-    final ctx = _bindings.mpv_create_weak_client(handle, name.toNativeChar());
+    final namePointer = name.toNativeChar();
+    final ctx = _bindings.mpv_create_weak_client(handle, namePointer);
+    malloc.free(namePointer);
     return MpvClient.handle(handle: ctx, bindings: _bindings);
   }
 
@@ -249,8 +253,12 @@ class MpvClient {
   ///
   /// @param [filename] absolute path to the config file on the local filesystem
   void loadConfigFile(String filename) {
-    _handleErrorCode(
-        _bindings.mpv_load_config_file(handle, filename.toNativeChar()));
+    final namePointer = filename.toNativeChar();
+    try {
+      _handleErrorCode(_bindings.mpv_load_config_file(handle, namePointer));
+    } finally {
+      malloc.free(namePointer);
+    }
   }
 
   /// Return the internal time in microseconds. This has an arbitrary start offset,
@@ -302,15 +310,27 @@ class MpvClient {
   ///             without the leading "--".
   /// @param[in] [data] Option value (according to the format).
   void setOption(String name, dynamic data) {
-    _handleErrorCode(_bindings.mpv_set_option(handle, name.toNativeChar(),
-        mpv_format.MPV_FORMAT_NODE, MpvNode.toNode(data).cast<Void>()));
+    final namePointer = name.toNativeChar();
+    try {
+      _handleErrorCode(_bindings.mpv_set_option(handle, namePointer,
+          mpv_format.MPV_FORMAT_NODE, MpvNode.toNode(data).cast<Void>()));
+    } finally {
+      malloc.free(namePointer);
+    }
   }
 
   /// Convenience function to set an option to a string value. This is like
   /// calling mpv_set_option() with MPV_FORMAT_STRING.
   void setOptionString(String name, String data) {
-    _handleErrorCode(_bindings.mpv_set_property_string(
-        handle, name.toNativeChar(), data.toNativeChar()));
+    final namePointer = name.toNativeChar();
+    final dataPointer = data.toNativeChar();
+    try {
+      _handleErrorCode(
+          _bindings.mpv_set_option_string(handle, namePointer, dataPointer));
+    } finally {
+      malloc.free(namePointer);
+      malloc.free(dataPointer);
+    }
   }
 
   /// Send a command to the player. Commands are the same as those used in
@@ -404,7 +424,12 @@ class MpvClient {
   ///
   /// This also has OSD and string expansion enabled by default.
   void commandString(String args) {
-    _handleErrorCode(_bindings.mpv_command_string(handle, args.toNativeChar()));
+    final argsPointer = args.toNativeChar();
+    try {
+      _handleErrorCode(_bindings.mpv_command_string(handle, argsPointer));
+    } finally {
+      malloc.free(argsPointer);
+    }
   }
 
   /// Same as mpv_command, but run the command asynchronously.
@@ -508,16 +533,28 @@ class MpvClient {
   /// @param [name] The property name. See input.rst for a list of properties.
   /// @param[in] [data] Option value.
   void setProperty(String name, dynamic data) {
-    _handleErrorCode(_bindings.mpv_set_property(handle, name.toNativeChar(),
-        mpv_format.MPV_FORMAT_NODE, MpvNode.toNode(data).cast<Void>()));
+    final namePointer = name.toNativeChar();
+    try {
+      _handleErrorCode(_bindings.mpv_set_property(handle, namePointer,
+          mpv_format.MPV_FORMAT_NODE, MpvNode.toNode(data).cast<Void>()));
+    } finally {
+      malloc.free(namePointer);
+    }
   }
 
   /// Convenience function to set a property to a string value.
   ///
   /// This is like calling mpv_set_property() with MPV_FORMAT_STRING.
   void setPropertyString(String name, String data) {
-    _handleErrorCode(_bindings.mpv_set_property_string(
-        handle, name.toNativeChar(), data.toNativeChar()));
+    final namePointer = name.toNativeChar();
+    final dataPointer = data.toNativeChar();
+    try {
+      _handleErrorCode(
+          _bindings.mpv_set_property_string(handle, namePointer, dataPointer));
+    } finally {
+      malloc.free(namePointer);
+      malloc.free(dataPointer);
+    }
   }
 
   /// Set a property asynchronously. You will receive the result of the operation
@@ -532,12 +569,17 @@ class MpvClient {
   /// @param[in] data Option value. The value will be copied by the function. It
   ///                 will never be modified by the client API.
   void setPropertyAsync(int replyUserdata, String name, dynamic data) {
-    return _handleErrorCode(_bindings.mpv_set_property_async(
-        handle,
-        replyUserdata,
-        name.toNativeChar(),
-        mpv_format.MPV_FORMAT_NODE,
-        MpvNode.toNode(data).cast<Void>()));
+    final namePointer = name.toNativeChar();
+    try {
+      return _handleErrorCode(_bindings.mpv_set_property_async(
+          handle,
+          replyUserdata,
+          namePointer,
+          mpv_format.MPV_FORMAT_NODE,
+          MpvNode.toNode(data).cast<Void>()));
+    } finally {
+      malloc.free(namePointer);
+    }
   }
 
   /// Read the value of the given property.
@@ -556,16 +598,16 @@ class MpvClient {
   ///                  mpv_free_node_contents() (MPV_FORMAT_NODE).
   T? getProperty<T>(String name) {
     final result = malloc.call<mpv_node>();
+    final namePointer = name.toNativeChar();
     try {
-      _handleErrorCode(_bindings.mpv_get_property(handle, name.toNativeChar(),
+      _handleErrorCode(_bindings.mpv_get_property(handle, namePointer,
           mpv_format.MPV_FORMAT_NODE, result.cast<Void>()));
       final data = MpvNode.toData<T>(result);
       freeNodeContents(result);
       return data;
-    } catch (_) {
-      rethrow;
     } finally {
       freeNodeContents(result);
+      malloc.free(namePointer);
     }
   }
 
@@ -581,10 +623,11 @@ class MpvClient {
   /// @return Property value, or NULL if the property can't be retrieved. Free
   ///         the string with mpv_free().
   String getPropertyString(String name) {
-    final pointer =
-        _bindings.mpv_get_property_string(handle, name.toNativeChar());
+    final namePointer = name.toNativeChar();
+    final pointer = _bindings.mpv_get_property_string(handle, namePointer);
     final data = pointer.toDartString();
     free(pointer);
+    malloc.free(namePointer);
     return data;
   }
 
@@ -594,10 +637,11 @@ class MpvClient {
   /// @return Property value, or NULL if the property can't be retrieved. Free
   ///         the string with mpv_free().
   String getPropertyOSDString(String name) {
-    final pointer =
-        _bindings.mpv_get_property_osd_string(handle, name.toNativeChar());
+    final namePointer = name.toNativeChar();
+    final pointer = _bindings.mpv_get_property_osd_string(handle, namePointer);
     final data = pointer.toDartString();
     free(pointer);
+    malloc.free(namePointer);
     return data;
   }
 
@@ -611,8 +655,13 @@ class MpvClient {
   /// @param name The property name.
   /// @param format see enum mpv_format.
   void getPropertyAsync(int replyUserdata, String name, int format) {
-    _handleErrorCode(_bindings.mpv_get_property_async(
-        handle, replyUserdata, name.toNativeChar(), format));
+    final namePointer = name.toNativeChar();
+    try {
+      _handleErrorCode(_bindings.mpv_get_property_async(
+          handle, replyUserdata, namePointer, format));
+    } finally {
+      malloc.free(namePointer);
+    }
   }
 
   /// Get a notification whenever the given property changes. You will receive
@@ -668,8 +717,13 @@ class MpvClient {
   /// @param format see enum mpv_format. Can be MPV_FORMAT_NONE to omit values
   ///               from the change events.
   void getObserveAsync(int replyUserdata, String name, int format) {
-    _handleErrorCode(_bindings.mpv_observe_property(
-        handle, replyUserdata, name.toNativeChar(), format));
+    final namePointer = name.toNativeChar();
+    try {
+      _handleErrorCode(_bindings.mpv_observe_property(
+          handle, replyUserdata, namePointer, format));
+    } finally {
+      malloc.free(namePointer);
+    }
   }
 
   /// Undo mpv_observe_property(). This will remove all observed properties for
@@ -763,8 +817,13 @@ class MpvClient {
   ///                  even if the terminal is disabled. (Since API version 1.19.)
   ///                  Also see mpv_log_level.
   void requestLogMessages(String minLevel) {
-    _handleErrorCode(
-        _bindings.mpv_request_log_messages(handle, minLevel.toNativeChar()));
+    final levelPointer = minLevel.toNativeChar();
+    try {
+      _handleErrorCode(
+          _bindings.mpv_request_log_messages(handle, levelPointer));
+    } finally {
+      malloc.free(levelPointer);
+    }
   }
 
   /// Wait for the next event, or until the timeout expires, or if another thread
@@ -901,8 +960,13 @@ class MpvClient {
   ///             raised.
   /// @param [priority] See remarks above. Use 0 as a neutral default.
   void hookAdd(int replyUserdata, String name, int priority) {
-    _handleErrorCode(_bindings.mpv_hook_add(
-        handle, replyUserdata, name.toNativeChar(), priority));
+    final namePointer = name.toNativeChar();
+    try {
+      _handleErrorCode(
+          _bindings.mpv_hook_add(handle, replyUserdata, namePointer, priority));
+    } finally {
+      malloc.free(namePointer);
+    }
   }
 
   /// Respond to a MPV_EVENT_HOOK event. You must call this after you have handled
@@ -940,6 +1004,17 @@ class MpvClient {
       for (final listener in _eventListeners[eventId]!) {
         listener.call(event);
       }
+    }
+    switch (eventId) {
+      case mpv_event_id.MPV_EVENT_LOG_MESSAGE:
+        final msg = event.ref.data.cast<mpv_event_log_message>().ref;
+        log('[${msg.prefix.toDartString()}] ${msg.level.toDartString()} : ${msg.text.toDartString()}');
+        break;
+      case mpv_event_id.MPV_EVENT_SHUTDOWN:
+        terminateDestroy();
+        break;
+      default:
+        break;
     }
   }
 }
