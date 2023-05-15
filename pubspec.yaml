@@ -1,22 +1,22 @@
 name: mpv_bindings
 description: Dart bindings for the libmpv.
 version: 0.0.1
-homepage:
+homepage: https://github.com/xuelongqy/mpv_bindings
 
 environment:
-  sdk: '>=2.18.5 <3.0.0'
-  flutter: ">=1.17.0"
+  sdk: '>=2.18.5'
+  flutter: ">=2.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
-  ffi: ^2.0.1
+  ffi: ^2.0.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^2.0.1
-  ffigen: ^7.2.2
+  ffigen: ^8.0.1
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
