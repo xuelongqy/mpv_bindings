@@ -13,13 +13,13 @@ class MpvLib {
 
   /// Set mpv bindings.
   static set bindings(MpvBindings value) {
-    bindings = value;
+    _bindings = value;
   }
 
   /// Mpv library.
   static get _mpvLibrary {
     if (Platform.isWindows) {
-      return DynamicLibrary.open('mpv-2.dll');
+      return DynamicLibrary.open('libmpv-2.dll');
     } else if (Platform.isMacOS) {
       return DynamicLibrary.open('libmpv.dylib');
     }
