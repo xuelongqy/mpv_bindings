@@ -10,10 +10,11 @@ extension StringExtension on String {
 
 extension StringListExtension on List<String> {
   Pointer<Pointer<Char>> toNativeCharList({Allocator allocator = malloc}) {
-    final argsPointer = malloc.call<Pointer<Char>>(length);
+    final argsPointer = malloc.call<Pointer<Char>>(length + 1);
     for (int i = 0; i < length; i++) {
       argsPointer[i] = this[i].toNativeChar();
     }
+    argsPointer[length] = nullptr;
     return argsPointer;
   }
 }

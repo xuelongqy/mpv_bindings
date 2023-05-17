@@ -29,7 +29,7 @@ class MpvClient {
     MpvBindings? bindings,
   })  : _bindings = bindings ?? MpvLib.bindings,
         handle = (bindings ?? MpvLib.bindings).mpv_create() {
-    _register();
+    //_register();
   }
 
   /// Create mpv client with handle.
