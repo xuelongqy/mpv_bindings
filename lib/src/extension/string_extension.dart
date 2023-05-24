@@ -20,7 +20,10 @@ extension StringListExtension on List<String> {
 }
 
 extension PointerCharExtension on Pointer<Char> {
-  String toDartString({int? length}) {
+  String? toDartString({int? length}) {
+    if (this == nullptr) {
+      return null;
+    }
     return cast<Utf8>().toDartString(length: length);
   }
 }

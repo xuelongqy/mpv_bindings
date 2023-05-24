@@ -1,5 +1,6 @@
 library mpv_bindings;
 
+import 'dart:async';
 import 'dart:developer';
 import 'dart:ffi';
 import 'dart:io';

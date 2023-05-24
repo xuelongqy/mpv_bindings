@@ -5,14 +5,30 @@ class MpvClient {
   /// MpvClient Map.
   /// Lookup for callback events.
   static final Map<int, MpvClient> _mpvClientMap = {};
-
-  /// This callback is invoked from any mpv thread (but possibly also
-  /// recursively from a thread that is calling the mpv API).
-  static void _wakeup(Pointer<Void> key) {
-    final mpvClient = _mpvClientMap[key.cast<IntPtr>().value];
-    if (mpvClient != null) {
-      mpvClient._onEvents();
-    }
+  
+  /// Get mpv version info;
+  static Future<String> getVersionInfo() {
+    String versionInfo = '';
+    final completer = Completer<String>();
+    final client = MpvClient();
+    client.requestLogMessages('v');
+    client.addEventListener(mpv_event_id.MPV_EVENT_LOG_MESSAGE, (event) {
+      final msg = event.ref.data.cast<mpv_event_log_message>().ref;
+      if (msg.prefix.toDartString() == 'cplayer') {
+        if (msg.log_level == mpv_log_level.MPV_LOG_LEVEL_V) {
+          final text = msg.text.toDartString();
+          if (text != null) {
+            versionInfo += text;
+            if (text.startsWith('List of enabled features:')) {
+              client.terminateDestroy();
+              completer.complete(versionInfo);
+            }
+          }
+        }
+      }
+    });
+    client.initialize();
+    return completer.future;
   }
 
   /// Mpv bindings.
@@ -22,6 +38,7 @@ class MpvClient {
   /// handle.
   final Pointer<mpv_handle> handle;
 
+  /// Uniquely identifies.
   late final Pointer<IntPtr> _key;
 
   /// Create mpv client.
@@ -67,7 +84,6 @@ class MpvClient {
     _key = malloc.call<IntPtr>()..value = handle.address;
     _mpvClientMap[_key.value] = this;
     _checkEvents();
-    //_setWakeupCallback();
   }
 
   /// Unregister mpv client.
@@ -96,7 +112,7 @@ class MpvClient {
   /// return A static string describing the error. The string is completely
   /// static, i.e. doesn't need to be deallocated, and is valid forever.
   String errorString(int error) {
-    return _bindings.mpv_error_string(error).toDartString();
+    return _bindings.mpv_error_string(error).toDartString()!;
   }
 
   /// General function to deallocate memory returned by some of the API functions.
@@ -114,7 +130,7 @@ class MpvClient {
   /// The client name. The string is read-only and is valid until the
   /// mpv_handle is destroyed.
   String get name {
-    return _bindings.mpv_client_name(handle).toDartString();
+    return _bindings.mpv_client_name(handle).toDartString()!;
   }
 
   /// Return the ID of this client handle. Every client has its own unique ID. This
@@ -629,7 +645,7 @@ class MpvClient {
     final data = pointer.toDartString();
     free(pointer);
     malloc.free(namePointer);
-    return data;
+    return data!;
   }
 
   /// Return the property as "OSD" formatted string. This is the same as
@@ -643,7 +659,7 @@ class MpvClient {
     final data = pointer.toDartString();
     free(pointer);
     malloc.free(namePointer);
-    return data;
+    return data!;
   }
 
   /// Get a property asynchronously. You will receive the result of the operation
@@ -754,7 +770,7 @@ class MpvClient {
   ///         The string is completely static, i.e. doesn't need to be deallocated,
   ///         and is valid forever.
   String eventName(int event) {
-    return _bindings.mpv_event_name(event).toDartString();
+    return _bindings.mpv_event_name(event).toDartString()!;
   }
 
   /// Convert the given src event to a mpv_node, and set///dst to the result.///dst
@@ -875,48 +891,6 @@ class MpvClient {
     return _bindings.mpv_wakeup(handle);
   }
 
-  /// Set a custom function that should be called when there are new events. Use
-  /// this if blocking in mpv_wait_event() to wait for new events is not feasible.
-  ///
-  /// Keep in mind that the callback will be called from foreign threads. You
-  /// must not make any assumptions of the environment, and you must return as
-  /// soon as possible (i.e. no long blocking waits). Exiting the callback through
-  /// any other means than a normal return is forbidden (no throwing exceptions,
-  /// no longjmp() calls). You must not change any local thread state (such as
-  /// the C floating point environment).
-  ///
-  /// You are not allowed to call any client API functions inside of the callback.
-  /// In particular, you should not do any processing in the callback, but wake up
-  /// another thread that does all the work. The callback is meant strictly for
-  /// notification only, and is called from arbitrary core parts of the player,
-  /// that make no considerations for reentrant API use or allowing the callee to
-  /// spend a lot of time doing other things. Keep in mind that it's also possible
-  /// that the callback is called from a thread while a mpv API function is called
-  /// (i.e. it can be reentrant).
-  ///
-  /// In general, the client API expects you to call mpv_wait_event() to receive
-  /// notifications, and the wakeup callback is merely a helper utility to make
-  /// this easier in certain situations. Note that it's possible that there's
-  /// only one wakeup callback invocation for multiple events. You should call
-  /// mpv_wait_event() with no timeout until MPV_EVENT_NONE is reached, at which
-  /// point the event queue is empty.
-  ///
-  /// If you actually want to do processing in a callback, spawn a thread that
-  /// does nothing but call mpv_wait_event() in a loop and dispatches the result
-  /// to a callback.
-  ///
-  /// Only one wakeup callback can be set.
-  ///
-  /// @param cb function that should be called if a wakeup is required
-  /// @param d arbitrary userdata passed to cb
-  ///
-  /// *Note: Do not use for now,
-  /// Dart does not support setting callbacks in other threads.
-  void _setWakeupCallback() {
-    _bindings.mpv_set_wakeup_callback(
-        handle, Pointer.fromFunction(_wakeup), _key.cast<Void>());
-  }
-
   /// Block until all asynchronous requests are done. This affects functions like
   /// mpv_command_async(), which return immediately and return their result as
   /// events.
@@ -988,19 +962,6 @@ class MpvClient {
   ///           corresponding MPV_EVENT_HOOK.
   void hookContinue(int id) {
     _handleErrorCode(_bindings.mpv_hook_continue(handle, id));
-  }
-
-  /// when the events are received.
-  /// After setting the Wakeup Callback,
-  /// it will be triggered when there is an event.
-  void _onEvents() {
-    while (_mpvClientMap.containsKey(_key.value)) {
-      final event = waitEvent(0);
-      if (event.ref.event_id == mpv_event_id.MPV_EVENT_NONE) {
-        break;
-      }
-      _handleEvent(event);
-    }
   }
 
   /// Check mpv events.
