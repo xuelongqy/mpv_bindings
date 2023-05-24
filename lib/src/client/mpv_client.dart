@@ -733,7 +733,7 @@ class MpvClient {
   /// @param name The property name.
   /// @param format see enum mpv_format. Can be MPV_FORMAT_NONE to omit values
   ///               from the change events.
-  void getObserveAsync(int replyUserdata, String name, int format) {
+  void observeProperty(int replyUserdata, String name, int format) {
     final namePointer = name.toNativeChar();
     try {
       _handleErrorCode(_bindings.mpv_observe_property(
@@ -751,10 +751,9 @@ class MpvClient {
   /// @param registered_reply_userdata ID that was passed to mpv_observe_property
   /// @return negative value is an error code, >=0 is number of removed properties
   ///         on success (includes the case when 0 were removed)
-  int getUnobserveAsync(int replyUserdata) {
+  void unobserveProperty(int replyUserdata) {
     final code = _bindings.mpv_unobserve_property(handle, replyUserdata);
     _handleErrorCode(code);
-    return code;
   }
 
   /// Return a string describing the event. For unknown events, NULL is returned.

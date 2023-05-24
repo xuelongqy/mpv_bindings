@@ -1,8 +1,6 @@
-import 'dart:ffi';
+part of mpv_bindings;
 
-import 'package:ffi/ffi.dart';
-
-extension StringExtension on String {
+extension MpvBindingsStringExtension on String {
   Pointer<Char> toNativeChar({Allocator allocator = malloc}) {
     return toNativeUtf8(allocator: malloc).cast<Char>();
   }
@@ -19,7 +17,7 @@ extension StringListExtension on List<String> {
   }
 }
 
-extension PointerCharExtension on Pointer<Char> {
+extension MpvBindingsPointerCharExtension on Pointer<Char> {
   String? toDartString({int? length}) {
     if (this == nullptr) {
       return null;
