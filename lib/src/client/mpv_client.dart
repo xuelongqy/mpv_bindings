@@ -29,7 +29,7 @@ class MpvClient {
     MpvBindings? bindings,
   })  : _bindings = bindings ?? MpvLib.bindings,
         handle = (bindings ?? MpvLib.bindings).mpv_create() {
-    //_register();
+    _register();
   }
 
   /// Create mpv client with handle.
@@ -66,7 +66,8 @@ class MpvClient {
   void _register() {
     _key = malloc.call<IntPtr>()..value = handle.address;
     _mpvClientMap[_key.value] = this;
-    _setWakeupCallback();
+    _checkEvents();
+    //_setWakeupCallback();
   }
 
   /// Unregister mpv client.
@@ -908,6 +909,9 @@ class MpvClient {
   ///
   /// @param cb function that should be called if a wakeup is required
   /// @param d arbitrary userdata passed to cb
+  ///
+  /// *Note: Do not use for now,
+  /// Dart does not support setting callbacks in other threads.
   void _setWakeupCallback() {
     _bindings.mpv_set_wakeup_callback(
         handle, Pointer.fromFunction(_wakeup), _key.cast<Void>());
@@ -987,6 +991,8 @@ class MpvClient {
   }
 
   /// when the events are received.
+  /// After setting the Wakeup Callback,
+  /// it will be triggered when there is an event.
   void _onEvents() {
     while (_mpvClientMap.containsKey(_key.value)) {
       final event = waitEvent(0);
@@ -995,6 +1001,22 @@ class MpvClient {
       }
       _handleEvent(event);
     }
+  }
+
+  /// Check mpv events.
+  /// Added to every frame.
+  void _checkEvents() {
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      while (_mpvClientMap.containsKey(_key.value)) {
+        final event = waitEvent(0);
+        if (event.ref.event_id == mpv_event_id.MPV_EVENT_NONE) {
+          _checkEvents();
+          break;
+        } else {
+          _handleEvent(event);
+        }
+      }
+    });
   }
 
   /// Handle mpv events.

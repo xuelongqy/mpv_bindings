@@ -6,6 +6,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
+import 'package:flutter/scheduler.dart';
 import 'src/extension/string_extension.dart';
 import 'src/bindings/mpv_bindings.dart';
 
