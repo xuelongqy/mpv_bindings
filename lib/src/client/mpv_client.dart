@@ -5,7 +5,7 @@ class MpvClient {
   /// MpvClient Map.
   /// Lookup for callback events.
   static final Map<int, MpvClient> _mpvClientMap = {};
-  
+
   /// Get mpv version info;
   static Future<String> getVersionInfo() {
     String versionInfo = '';
@@ -966,15 +966,24 @@ class MpvClient {
   /// Check mpv events.
   /// Added to every frame.
   void _checkEvents() {
-    SchedulerBinding.instance.scheduleFrameCallback((_) {
-      while (_mpvClientMap.containsKey(_key.value)) {
-        final event = waitEvent(0);
-        if (event.ref.event_id == mpv_event_id.MPV_EVENT_NONE) {
-          _checkEvents();
-          break;
-        } else {
-          _handleEvent(event);
-        }
+    Future.doWhile(() async {
+      if (_mpvClientMap.containsKey(_key.value)) {
+        final completer = Completer();
+        SchedulerBinding.instance.scheduleFrameCallback((_) {
+          while (true) {
+            final event = waitEvent(0);
+            if (event.ref.event_id == mpv_event_id.MPV_EVENT_NONE) {
+              break;
+            } else {
+              _handleEvent(event);
+            }
+          }
+          completer.complete();
+        });
+        await completer.future;
+        return true;
+      } else {
+        return false;
       }
     });
   }
