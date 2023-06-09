@@ -966,7 +966,7 @@ class MpvClient {
   /// Check mpv events.
   /// Added to every frame.
   void _checkEvents() {
-    SchedulerBinding.instance.addPostFrameCallback((_) {
+    SchedulerBinding.instance.scheduleFrameCallback((_) {
       while (_mpvClientMap.containsKey(_key.value)) {
         final event = waitEvent(0);
         if (event.ref.event_id == mpv_event_id.MPV_EVENT_NONE) {
