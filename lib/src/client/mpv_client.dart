@@ -179,8 +179,8 @@ class MpvClient {
   /// be sent MPV_EVENT_SHUTDOWN. This function may block until these clients
   /// have responded to the shutdown event, and the core is finally destroyed.
   void destroy() {
-    _bindings.mpv_destroy(handle);
     _unregister();
+    _bindings.mpv_destroy(handle);
   }
 
   /// Similar to mpv_destroy(), but brings the player and all clients down
@@ -207,8 +207,8 @@ class MpvClient {
   ///  this function will merely send a quit command and then call
   ///  mpv_destroy(), without waiting for the actual shutdown.
   void terminateDestroy() {
-    _bindings.mpv_terminate_destroy(handle);
     _unregister();
+    _bindings.mpv_terminate_destroy(handle);
   }
 
   /// Create a new client handle connected to the same player core as ctx. This
