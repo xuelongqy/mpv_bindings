@@ -1001,9 +1001,6 @@ class MpvClient {
         final msg = event.ref.data.cast<mpv_event_log_message>().ref;
         log('[${msg.prefix.toDartString()}] ${msg.level.toDartString()} : ${msg.text.toDartString()}');
         break;
-      case mpv_event_id.MPV_EVENT_SHUTDOWN:
-        terminateDestroy();
-        break;
       default:
         break;
     }
