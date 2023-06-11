@@ -971,6 +971,9 @@ class MpvClient {
         final completer = Completer();
         SchedulerBinding.instance.scheduleFrameCallback((_) {
           while (true) {
+            if (!_mpvClientMap.containsKey(_key.value)) {
+              break;
+            }
             final event = waitEvent(0);
             if (event.ref.event_id == mpv_event_id.MPV_EVENT_NONE) {
               break;
