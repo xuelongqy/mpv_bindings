@@ -966,27 +966,15 @@ class MpvClient {
   /// Check mpv events.
   /// Added to every frame.
   void _checkEvents() {
-    Future.doWhile(() async {
-      if (_mpvClientMap.containsKey(_key.value)) {
-        final completer = Completer();
-        SchedulerBinding.instance.scheduleFrameCallback((_) {
-          while (true) {
-            if (!_mpvClientMap.containsKey(_key.value)) {
-              break;
-            }
-            final event = waitEvent(0);
-            if (event.ref.event_id == mpv_event_id.MPV_EVENT_NONE) {
-              break;
-            } else {
-              _handleEvent(event);
-            }
-          }
-          completer.complete();
-        });
-        await completer.future;
-        return true;
-      } else {
-        return false;
+    SchedulerBinding.instance.scheduleFrameCallback((_) {
+      while (_mpvClientMap.containsKey(_key.value)) {
+        final event = waitEvent(0);
+        if (event.ref.event_id == mpv_event_id.MPV_EVENT_NONE) {
+          _checkEvents();
+          break;
+        } else {
+          _handleEvent(event);
+        }
       }
     });
   }
