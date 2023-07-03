@@ -403,7 +403,7 @@ class MpvClient {
     malloc.free(nodeList);
     try {
       _handleErrorCode(_bindings.mpv_command_node(handle, argsList, result));
-      return MpvNode.toData<T>(result);
+      return result.value<T>();
     } catch (_) {
       rethrow;
     } finally {
@@ -427,7 +427,7 @@ class MpvClient {
     try {
       _handleErrorCode(
           _bindings.mpv_command_ret(handle, args.toNativeCharList(), result));
-      return MpvNode.toData<T>(result);
+      return result.value<T>();
     } catch (_) {
       rethrow;
     } finally {
@@ -616,16 +616,16 @@ class MpvClient {
   T? getProperty<T>(String name) {
     final result = malloc.call<mpv_node>();
     final namePointer = name.toNativeChar();
+    T? data;
     try {
       _handleErrorCode(_bindings.mpv_get_property(handle, namePointer,
           mpv_format.MPV_FORMAT_NODE, result.cast<Void>()));
-      final data = MpvNode.toData<T>(result);
-      freeNodeContents(result);
-      return data;
+      data = result.value<T>();
     } finally {
       freeNodeContents(result);
       malloc.free(namePointer);
     }
+    return data;
   }
 
   /// Return the value of the property with the given name as string. This is
@@ -796,7 +796,7 @@ class MpvClient {
     final dst = malloc.call<mpv_node>();
     try {
       _handleErrorCode(_bindings.mpv_event_to_node(dst, src));
-      final data = MpvNode.toData<T>(dst);
+      final data = dst.value<T>();
       return data;
     } catch (_) {
       rethrow;

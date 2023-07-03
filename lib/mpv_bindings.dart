@@ -18,3 +18,4 @@ part 'src/node/mpv_node.dart';
 part 'src/exception/mpv_exception.dart';
 part 'src/event/mpv_event.dart';
 part 'src/extension/string_extension.dart';
+part 'src/extension/mpv_extension.dart';
