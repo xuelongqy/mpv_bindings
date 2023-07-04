@@ -57,8 +57,11 @@ class MpvClient {
     _register();
   }
 
-  /// Event listeners.
+  /// Mpv events listeners.
   final Map<int, List<MpvEventCallback>> _eventListeners = {};
+
+  /// Mpv property change listeners.
+  final Map<String, List<Function>> _propertyChangeListeners = {};
 
   /// Add event listener.
   /// [eventId] See [mpv_event_id].
@@ -79,6 +82,39 @@ class MpvClient {
     }
   }
 
+  /// Observe property.
+  /// [name] The property name.
+  /// [listener] The property changed callback.
+  /// [replyUserdata] See [observeProperty].
+  /// [format] See [observeProperty].
+  void onProperty<T>({
+    required String name,
+    required MpvPropertyChangeCallback<T> listener,
+    int replyUserdata = 0,
+    int format = mpv_format.MPV_FORMAT_NODE,
+  }) {
+    if (!_propertyChangeListeners.containsKey(name)) {
+      _propertyChangeListeners[name] = [];
+    }
+    _propertyChangeListeners[name]!.add(listener);
+    observeProperty(replyUserdata, name, format);
+  }
+
+  /// Unobserve property.
+  /// [name] The property name.
+  /// [listener] The property changed callback.
+  /// [replyUserdata] See [unobserveProperty].
+  void offProperty({
+    required String name,
+    required MpvPropertyChangeCallback listener,
+    int? replyUserdata,
+  }) {
+    _propertyChangeListeners[name]?.remove(listener);
+    if (replyUserdata != null) {
+      unobserveProperty(replyUserdata);
+    }
+  }
+
   /// Register mpv client.
   void _register() {
     _key = malloc.call<IntPtr>()..value = handle.address;
@@ -91,6 +127,7 @@ class MpvClient {
     _mpvClientMap.remove(_key.value);
     malloc.free(_key);
     _eventListeners.clear();
+    _propertyChangeListeners.clear();
   }
 
   /// Handle mpv error code.
@@ -723,15 +760,15 @@ class MpvClient {
   ///
   /// Safe to be called from mpv render API threads.
   ///
-  /// @param reply_userdata This will be used for the mpv_event.reply_userdata
+  /// @param [replyUserdata] This will be used for the mpv_event.reply_userdata
   ///                       field for the received MPV_EVENT_PROPERTY_CHANGE
   ///                       events. (Also see section about asynchronous calls,
   ///                       although this function is somewhat different from
   ///                       actual asynchronous calls.)
   ///                       If you have no use for this, pass 0.
   ///                       Also see mpv_unobserve_property().
-  /// @param name The property name.
-  /// @param format see enum mpv_format. Can be MPV_FORMAT_NONE to omit values
+  /// @param [name] The property name.
+  /// @param [format] see enum mpv_format. Can be MPV_FORMAT_NONE to omit values
   ///               from the change events.
   void observeProperty(int replyUserdata, String name, int format) {
     final namePointer = name.toNativeChar();
@@ -748,7 +785,7 @@ class MpvClient {
   ///
   /// Safe to be called from mpv render API threads.
   ///
-  /// @param registered_reply_userdata ID that was passed to mpv_observe_property
+  /// @param [replyUserdata] registered_reply_userdata ID that was passed to mpv_observe_property
   /// @return negative value is an error code, >=0 is number of removed properties
   ///         on success (includes the case when 0 were removed)
   void unobserveProperty(int replyUserdata) {
@@ -761,7 +798,7 @@ class MpvClient {
   /// Note that all events actually returned by the API will also yield a non-NULL
   /// string with this function.
   ///
-  /// @param event event ID, see see enum mpv_event_id
+  /// @param [event] event ID, see see enum mpv_event_id
   /// @return A static string giving a short symbolic name of the event. It
   ///         consists of lower-case alphanumeric characters and can include "-"
   ///         characters. This string is suitable for use in e.g. scripting
@@ -988,6 +1025,9 @@ class MpvClient {
       }
     }
     switch (eventId) {
+      case mpv_event_id.MPV_EVENT_PROPERTY_CHANGE:
+        _onPropertyChange(event);
+        break;
       case mpv_event_id.MPV_EVENT_LOG_MESSAGE:
         final msg = event.ref.data.cast<mpv_event_log_message>().ref;
         log('[${msg.prefix.toDartString()}] ${msg.level.toDartString()} : ${msg.text.toDartString()}');
@@ -995,5 +1035,16 @@ class MpvClient {
       default:
         break;
     }
+  }
+
+  /// Monitor properties change.
+  /// Handle mpv property change events.
+  void _onPropertyChange(Pointer<mpv_event> event) {
+    final property = event.ref.data.cast<mpv_event_property>().ref;
+    final name = property.name.toDartString();
+    final value = property.value();
+    _propertyChangeListeners[name]?.forEach((element) {
+      element(value);
+    });
   }
 }
